@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <clipPath id="squircle-clip">
+      <rect x="16" y="16" width="480" height="480" rx="110" ry="110" />
+    </clipPath>
+    <clipPath id="lens-circle-clip">
+      <circle cx="256" cy="256" r="150" />
+    </clipPath>
+    <clipPath id="lens-left-clip">
+      <rect x="100" y="100" width="156" height="312" />
+    </clipPath>
+    <clipPath id="lens-right-clip">
+      <rect x="256" y="100" width="156" height="312" />
+    </clipPath>
+    <linearGradient id="lensRing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2c3440"/>
+      <stop offset="100%" stop-color="#151921"/>
+    </linearGradient>
+    <linearGradient id="bgPlate" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f8fafc"/>
+    </linearGradient>
+    <filter id="subtleShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.08" />
+    </filter>
+  </defs>
+
+  <!-- Background Base App Icon -->
+  <rect x="16" y="16" width="480" height="480" rx="110" ry="110" fill="url(#bgPlate)" filter="url(#subtleShadow)" stroke="#e2e8f0" stroke-width="4"/>
+
+  <!-- Four Green Viewfinder Corner Brackets -->
+  <!-- Top Left -->
+  <path d="M 76 150 L 76 114 A 38 38 0 0 1 114 76 L 150 76" fill="none" stroke="#16a34a" stroke-width="24" stroke-linecap="round"/>
+  <!-- Top Right -->
+  <path d="M 362 76 L 398 76 A 38 38 0 0 1 436 114 L 436 150" fill="none" stroke="#16a34a" stroke-width="24" stroke-linecap="round"/>
+  <!-- Bottom Left -->
+  <path d="M 76 362 L 76 398 A 38 38 0 0 0 114 436 L 150 436" fill="none" stroke="#16a34a" stroke-width="24" stroke-linecap="round"/>
+  <!-- Bottom Right -->
+  <path d="M 362 436 L 398 436 A 38 38 0 0 0 436 398 L 436 362" fill="none" stroke="#16a34a" stroke-width="24" stroke-linecap="round"/>
+
+  <!-- Outer Dark Lens Ring -->
+  <circle cx="256" cy="256" r="162" fill="url(#lensRing)" />
+  <!-- Inner White Lens Border Gap -->
+  <circle cx="256" cy="256" r="148" fill="#ffffff" />
+
+  <!-- Lens Glass Light Reflection Rim (Crescent) -->
+  <path d="M 160 178 A 140 140 0 0 1 245 125" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.85"/>
+
+  <!-- Inside Lens Content: Split Circle -->
+  <g clip-path="url(#lens-circle-clip)">
+    <!-- LEFT HALF (JUNK / PACKED FOOD) -->
+    <g clip-path="url(#lens-left-clip)">
+      <rect x="100" y="100" width="156" height="312" fill="#fffbeb" />
+
+      <!-- Yellow Chips Pouch in Background -->
+      <polygon points="175,170 248,155 252,260 180,250" fill="#f59e0b" rx="6" />
+      <polygon points="178,165 245,152 248,175 182,185" fill="#fbbf24" />
+      <polygon points="200,195 230,190 220,215" fill="#fef08a" opacity="0.9" />
+
+      <!-- Red Noodle / Snack Cup in Middle -->
+      <rect x="156" y="210" width="70" height="98" rx="8" fill="#dc2626" />
+      <rect x="152" y="206" width="78" height="18" rx="5" fill="#ef4444" />
+      <!-- Noodle cup steam curves -->
+      <path d="M 175 195 Q 170 185 178 175" fill="none" stroke="#fbbf24" stroke-width="4" stroke-linecap="round"/>
+      <path d="M 195 195 Q 190 185 198 175" fill="none" stroke="#fbbf24" stroke-width="4" stroke-linecap="round"/>
+      <path d="M 170 250 Q 185 240 195 260" fill="none" stroke="#fef08a" stroke-width="4"/>
+
+      <!-- Foreground Noodle Bowl (Red & White Rim) -->
+      <ellipse cx="230" cy="272" rx="42" ry="16" fill="#fef08a" stroke="#d97706" stroke-width="3" />
+      <!-- Bowl base -->
+      <path d="M 190 274 Q 195 340 235 344 Q 255 342 256 320 L 256 274 Z" fill="#ef4444" />
+      <path d="M 190 295 L 256 295 L 256 312 L 196 312 Z" fill="#ffffff" />
+      <!-- Curly Noodles inside bowl -->
+      <path d="M 205 270 Q 212 263 220 270 Q 228 277 236 270 Q 244 265 252 271" fill="none" stroke="#d97706" stroke-width="4" stroke-linecap="round"/>
+    </g>
+
+    <!-- CENTER DIVIDING LINE -->
+    <line x1="256" y1="100" x2="256" y2="412" stroke="#ffffff" stroke-width="4" />
+
+    <!-- RIGHT HALF (HEALTHY WHOLESOME FOOD) -->
+    <g clip-path="url(#lens-right-clip)">
+      <rect x="256" y="100" width="156" height="312" fill="#f0fdf4" />
+
+      <!-- Deep Green Salad Leaves in Background -->
+      <ellipse cx="280" cy="180" rx="26" ry="42" fill="#15803d" transform="rotate(-15 280 180)" />
+      <path d="M 276 142 Q 284 180 278 215" fill="none" stroke="#22c55e" stroke-width="2.5" />
+      
+      <!-- Fresh Green Broccoli Florets -->
+      <circle cx="316" cy="220" r="24" fill="#22c55e" />
+      <circle cx="334" cy="210" r="18" fill="#16a34a" />
+      <circle cx="304" cy="206" r="16" fill="#4ade80" />
+
+      <!-- Red Juicy Tomato Slices -->
+      <circle cx="280" cy="245" r="16" fill="#ef4444" />
+      <circle cx="277" cy="243" r="10" fill="#dc2626" />
+      <circle cx="275" cy="241" r="3" fill="#fef08a" />
+      <circle cx="281" cy="247" r="3" fill="#fef08a" />
+
+      <!-- Avocado Slice with Big Brown Seed -->
+      <ellipse cx="335" cy="265" rx="22" ry="30" fill="#84cc16" transform="rotate(20 335 265)" />
+      <ellipse cx="335" cy="265" rx="16" ry="24" fill="#bef264" transform="rotate(20 335 265)" />
+      <ellipse cx="337" cy="268" rx="10" ry="14" fill="#78350f" transform="rotate(20 337 268)" />
+      <circle cx="334" cy="264" r="3" fill="#fbbf24" opacity="0.6"/>
+
+      <!-- Fresh White Salad Bowl base with Grains/Quinoa -->
+      <ellipse cx="295" cy="296" rx="42" ry="20" fill="#fef3c7" stroke="#d97706" stroke-width="2" />
+      <path d="M 256 300 Q 275 350 325 342 Q 350 335 365 304 Z" fill="#ffffff" stroke="#cbd5e1" stroke-width="2" />
+      <!-- Quinoa grains texture -->
+      <circle cx="270" cy="292" r="2.5" fill="#d97706" />
+      <circle cx="280" cy="298" r="2.5" fill="#b45309" />
+      <circle cx="290" cy="291" r="2.5" fill="#d97706" />
+      <circle cx="300" cy="299" r="2.5" fill="#b45309" />
+      <circle cx="310" cy="294" r="2.5" fill="#d97706" />
+      <circle cx="285" cy="305" r="2.5" fill="#b45309" />
+
+      <!-- Orange Baby Carrot Slices -->
+      <ellipse cx="328" cy="302" rx="14" ry="5" fill="#ea580c" transform="rotate(-30 328 302)" />
+      <ellipse cx="316" cy="310" rx="12" ry="4" fill="#f97316" transform="rotate(-20 316 310)" />
+    </g>
+  </g>
+</svg>

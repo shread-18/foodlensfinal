@@ -1,0 +1,56 @@
+{
+  "packageId": "com.nexora.foodlens",
+  "host": "ais-pre-3r33mrbgf7eyfwu42pwrvy-91802752904.asia-southeast1.run.app",
+  "name": "FoodLens AI — Food Pack Scanner & Health Portal",
+  "launcherName": "FoodLens",
+  "display": "standalone",
+  "themeColor": "#10B981",
+  "themeColorDark": "#0F172A",
+  "navigationColor": "#0F172A",
+  "navigationColorDark": "#0F172A",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#0F172A",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://ais-pre-3r33mrbgf7eyfwu42pwrvy-91802752904.asia-southeast1.run.app/foodlens-icon.svg",
+  "maskableIconUrl": "https://ais-pre-3r33mrbgf7eyfwu42pwrvy-91802752904.asia-southeast1.run.app/foodlens-icon.svg",
+  "splashScreenFadeOutDuration": 300,
+  "signing": {
+    "file": "./android.keystore",
+    "alias": "foodlens"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [
+    {
+      "name": "Scan Pack",
+      "short_name": "Scan",
+      "url": "/scan",
+      "icon": "https://ais-pre-3r33mrbgf7eyfwu42pwrvy-91802752904.asia-southeast1.run.app/foodlens-icon.svg"
+    },
+    {
+      "name": "Daily Goals",
+      "short_name": "Goals",
+      "url": "/goals",
+      "icon": "https://ais-pre-3r33mrbgf7eyfwu42pwrvy-91802752904.asia-southeast1.run.app/foodlens-icon.svg"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://ais-pre-3r33mrbgf7eyfwu42pwrvy-91802752904.asia-southeast1.run.app/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": {
+      "enabled": false
+    },
+    "playBilling": {
+      "enabled": false
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false
+}

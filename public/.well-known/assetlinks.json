@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.nexora.foodlens",
+      "sha256_cert_fingerprints": [
+        "14:6D:E9:7F:0E:52:D7:11:23:7A:85:7B:80:1E:EA:3F:AF:E2:83:A1:42:BB:63:0E:40:C2:CD:4C:4E:0F:4E:1A"
+      ]
+    }
+  }
+]

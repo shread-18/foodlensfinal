@@ -1,0 +1,50 @@
+{
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "name": "FoodLens AI - Mobile Food Analyzer",
+  "short_name": "FoodLens",
+  "description": "Smart food package analyzer, kid growth simulator, and daily health goals tracker.",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#10b981",
+  "background_color": "#0f172a",
+  "categories": ["health", "fitness", "lifestyle", "education"],
+  "icons": [
+    {
+      "src": "/foodlens-icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/foodlens-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Scan Pack",
+      "short_name": "Scan",
+      "description": "Open camera to scan food packaging",
+      "url": "/scan",
+      "icons": [{ "src": "/foodlens-icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Kid Growth",
+      "short_name": "Growth",
+      "description": "See food effect on kid body",
+      "url": "/growth",
+      "icons": [{ "src": "/foodlens-icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Daily Goals",
+      "short_name": "Goals",
+      "description": "Track hydration and daily intake",
+      "url": "/goals",
+      "icons": [{ "src": "/foodlens-icon.svg", "sizes": "192x192" }]
+    }
+  ]
+}

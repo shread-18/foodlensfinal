@@ -1,0 +1,6 @@
+{
+  "name": "FoodLens AI - Smart Pack Analyzer & Health Guide",
+  "description": "AI-powered food package nutrition analyzer, AR insights, kid safety warnings, healthy alternatives, hydration & caffeine tracker by Nexora.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
