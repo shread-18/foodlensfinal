@@ -8,8 +8,84 @@ dotenv.config();
 
 const app = express();
 const port = parseInt(process.env.PORT || '3000', 10);
+const analysisModel = 'gemini-3.8-flash';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value.trim() : fallback;
+}
+
+function readStringList(value: unknown): string[] | null {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) return null;
+  return value.map((item: string) => item.trim()).filter(Boolean);
+}
+
+function normalizeAnalysisResponse(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  const productName = readString(value.productName);
+  if (!productName) return null;
+
+  const nestedNutrition = isRecord(value.nutrition) ? value.nutrition : {};
+  const nutritionKeys = {
+    calories: 'calories',
+    protein: 'protein',
+    carbohydrates: 'carbohydrates',
+    sugar: 'sugar',
+    totalFats: 'fat',
+    saturatedFat: 'saturatedFat',
+    fiber: 'fiber',
+    sodium: 'sodium',
+  };
+  const nutrition: Record<string, number | null> = {};
+  for (const [key, alias] of Object.entries(nutritionKeys)) {
+    const raw = Object.prototype.hasOwnProperty.call(value, key) ? value[key] : nestedNutrition[alias];
+    if (raw === undefined || raw === null) {
+      nutrition[key] = null;
+    } else if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) {
+      nutrition[key] = raw;
+    } else {
+      return null;
+    }
+  }
+
+  const ingredients = readStringList(value.ingredientsList ?? value.ingredients);
+  const additives = readStringList(value.additives);
+  const preservatives = readStringList(value.preservatives);
+  const allergens = readStringList(value.allergens);
+  if (!ingredients || !additives || !preservatives || !allergens) return null;
+  if (Object.values(nutrition).every((item) => item === null)
+    && ingredients.length === 0 && additives.length === 0 && preservatives.length === 0 && allergens.length === 0) {
+    return null;
+  }
+
+  return {
+    productName,
+    brand: readString(value.brand, 'Unknown brand'),
+    category: readString(value.category, 'Packaged food'),
+    ...nutrition,
+    nutritionBasis: readString(value.nutritionBasis, 'As reported on the package'),
+    servingSize: readString(value.servingSize),
+    ingredientsList: ingredients,
+    additives,
+    preservatives,
+    allergens,
+    recommendedAmount: readString(value.recommendedAmount, 'Check the package serving size'),
+    recommendedTime: readString(value.recommendedTime, 'Any time'),
+    recommendedFrequency: readString(value.recommendedFrequency, 'Consider as part of your overall diet'),
+    positiveEffects: readString(value.positiveEffects),
+    excessIntakeEffects: readString(value.excessIntakeEffects),
+  };
+}
 
 app.use(express.json({ limit: '25mb' }));
+
+if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_actual_key_here') {
+  console.warn('GEMINI_API_KEY is missing or still a placeholder. AI analysis is disabled; dataset matching remains available.');
+}
 
 // In-memory encrypted backup store for E2EE cloud backup simulation
 const encryptedCloudBackups = new Map<string, { payload: string; timestamp: number; checksum: string }>();
@@ -58,16 +134,23 @@ app.get('/api/backup/load/:backupId', (req, res) => {
   });
 });
 
-// AI Food Package Analysis Endpoint using Gemini 3.8 Flash
+// AI food package analysis using Gemini Flash vision.
 app.post('/api/analyze-food', async (req, res) => {
   try {
     const { imageBase64, mimeType = 'image/jpeg', queryText } = req.body;
     const apiKey = process.env.GEMINI_API_KEY;
 
-    if (!apiKey) {
+    if (!apiKey || apiKey === 'your_actual_key_here') {
       return res.status(503).json({
-        error: 'GEMINI_API_KEY is not configured in environment variables. Falling back to local algorithmic analysis.',
+        code: 'MISSING_API_KEY',
+        error: 'FoodLens AI is not configured. Set GEMINI_API_KEY in the project .env file and restart the server.',
       });
+    }
+    if (typeof imageBase64 !== 'string' || imageBase64.length === 0) {
+      return res.status(400).json({ code: 'INVALID_IMAGE', error: 'A food package image is required.' });
+    }
+    if (typeof mimeType !== 'string' || !mimeType.startsWith('image/')) {
+      return res.status(400).json({ code: 'INVALID_IMAGE_TYPE', error: 'The uploaded file must be an image.' });
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -79,14 +162,20 @@ Extract and calculate the following structured JSON:
   "productName": "string (accurate product name)",
   "brand": "string",
   "category": "string (e.g. Snacks, Dairy, Noodles, Chocolate, Drink, etc.)",
-  "calories": number (kcal per serving or 100g),
-  "sugar": number (grams),
-  "totalFats": number (grams),
-  "saturatedFat": number (grams),
-  "protein": number (grams),
-  "sodium": number (mg),
+  "calories": number or null (kcal per serving or 100g),
+  "carbohydrates": number or null (grams),
+  "sugar": number or null (grams),
+  "totalFats": number or null (grams),
+  "saturatedFat": number or null (grams),
+  "protein": number or null (grams),
+  "fiber": number or null (grams),
+  "sodium": number or null (mg),
+  "nutritionBasis": "per 100 g" | "per serving",
+  "servingSize": "string",
   "allergens": ["string"],
   "ingredientsList": ["string"],
+  "additives": ["string"],
+  "preservatives": ["string"],
   "healthScore": number (0 to 100 based on nutritional density, processing degree, sugar/fat/salt),
   "nutriGrade": "A" | "B" | "C" | "D" | "E",
   "consumptionSignal": "GOOD" | "OK" | "BAD" (for continuous regular consumption: GOOD = healthy daily/regular, OK = moderate/occasional, BAD = limit/harmful if frequent),
@@ -147,33 +236,43 @@ ${queryText ? `User description or product notes: ${queryText}` : ''}
     contents.push({ text: promptText });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: analysisModel,
       contents,
       config: {
         responseMimeType: 'application/json',
       },
     });
 
-    const outputText = response.text || '{}';
-    let parsed: any;
+    const outputText = response.text?.trim();
+    if (!outputText) {
+      return res.status(502).json({ code: 'EMPTY_AI_RESPONSE', error: 'The analysis service returned no food data.' });
+    }
+    let parsed: unknown;
     try {
       parsed = JSON.parse(outputText);
     } catch {
-      // Clean up markdown quotes if needed
-      const cleaned = outputText.replace(/```json\n?|```/g, '').trim();
-      parsed = JSON.parse(cleaned);
+      const cleaned = outputText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        return res.status(502).json({ code: 'INVALID_AI_RESPONSE', error: 'The analysis service returned unreadable food data.' });
+      }
+    }
+    const normalized = normalizeAnalysisResponse(parsed);
+    if (!normalized) {
+      return res.status(502).json({ code: 'INVALID_AI_RESPONSE', error: 'The analysis service returned incomplete food data.' });
     }
 
     return res.json({
       success: true,
-      source: 'gemini-3.8-flash',
-      data: parsed,
+      source: analysisModel,
+      data: normalized,
     });
   } catch (error: any) {
     console.error('Error in /api/analyze-food:', error);
-    return res.status(500).json({
-      error: error.message || 'Failed to analyze food package',
-      details: error.toString(),
+    return res.status(502).json({
+      code: 'ANALYSIS_FAILED',
+      error: 'The food analysis service could not complete the request.',
     });
   }
 });
@@ -195,8 +294,16 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  app.listen(port, '0.0.0.0', () => {
+  const server = app.listen(port, '0.0.0.0', () => {
     console.log(`FoodLens AI server is running on http://0.0.0.0:${port}`);
+  });
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`Port ${port} is already in use. Set PORT to an available port and try again.`);
+    } else {
+      console.error('FoodLens AI server failed to listen:', error.message);
+    }
+    process.exitCode = 1;
   });
 }
 

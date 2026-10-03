@@ -1,4 +1,5 @@
 import { ConsumptionSignal, FoodItem, HazardLevel, NutriGrade } from '../types/food';
+import { calculateHealthScore } from './healthScore';
 
 export interface AlgorithmBreakdown {
   baseScore: number;
@@ -23,7 +24,6 @@ export interface AlgorithmBreakdown {
 }
 
 export function evaluateFoodNutrition(food: Partial<FoodItem>): AlgorithmBreakdown {
-  const calories = food.calories || 0;
   const sugar = food.sugar || 0;
   const totalFats = food.totalFats || 0;
   const saturatedFat = food.saturatedFat ?? (totalFats * 0.45);
@@ -63,23 +63,21 @@ export function evaluateFoodNutrition(food: Partial<FoodItem>): AlgorithmBreakdo
   // 5. Positive Nutrient Bonus (Protein & Whole Nutrients)
   const proteinBonus = Math.min(22, protein * 1.2);
 
-  // Raw score calculation
-  const rawScore = 100 - (sugarPenalty + satFatPenalty + sodiumPenalty + additivesPenalty) + proteinBonus;
-  const finalScore = Math.max(5, Math.min(100, Math.round(rawScore)));
+  const finalScore = calculateHealthScore(food).score;
 
   // Nutri-Grade determination
   let nutriGrade: NutriGrade = 'C';
-  if (finalScore >= 80) nutriGrade = 'A';
-  else if (finalScore >= 65) nutriGrade = 'B';
+  if (finalScore >= 85) nutriGrade = 'A';
+  else if (finalScore >= 70) nutriGrade = 'B';
   else if (finalScore >= 50) nutriGrade = 'C';
   else if (finalScore >= 35) nutriGrade = 'D';
   else nutriGrade = 'E';
 
   // Continuous Consumption Signal
   let signal: ConsumptionSignal = 'OK';
-  if (finalScore >= 70 && sugar <= 16 && sodium <= 500) {
+  if (finalScore >= 70) {
     signal = 'GOOD';
-  } else if (finalScore < 48 || sugar > 28 || sodium > 750) {
+  } else if (finalScore < 50) {
     signal = 'BAD';
   } else {
     signal = 'OK';

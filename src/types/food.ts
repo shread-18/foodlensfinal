@@ -51,8 +51,15 @@ export interface FoodItem {
   category: string;
   barcode?: string;
   calories: number;
+  carbohydrates?: number;
+  nutritionBasis?: string;
+  servingSize?: string;
+  analysisMode?: 'AI' | 'Dataset' | 'Demo';
+  unavailableNutrition?: Array<'calories' | 'protein' | 'carbohydrates' | 'sugar' | 'totalFats' | 'saturatedFat' | 'fiber' | 'sodium'>;
   sugar: number; // grams
   totalFats: number; // grams
+  additives?: string[];
+  preservatives?: string[];
   saturatedFat?: number; // grams
   protein: number; // grams
   sodium?: number; // mg

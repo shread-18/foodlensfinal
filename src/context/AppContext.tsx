@@ -14,6 +14,7 @@ import { sounds, requestNotificationPermission, sendLocalNotification } from '..
 interface AppContextType {
   currentFood: FoodItem;
   setCurrentFood: (food: FoodItem) => void;
+  hasAnalyzedFood: boolean;
   scanHistory: ScanHistoryItem[];
   addScanHistory: (food: FoodItem, thumbUrl?: string) => void;
   clearScanHistory: () => void;
@@ -139,6 +140,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return OFFICIAL_HACKATHON_DATASET[3]; // Maggi by default
   });
+  const [hasAnalyzedFood, setHasAnalyzedFood] = useState<boolean>(
+    () => typeof window !== 'undefined' && localStorage.getItem('foodlens_has_analysis') === 'true',
+  );
 
   // Scan History
   const [scanHistory, setScanHistory] = useState<ScanHistoryItem[]>(() => {
@@ -261,6 +265,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [currentFood]);
 
   useEffect(() => {
+    localStorage.setItem('foodlens_has_analysis', String(hasAnalyzedFood));
+  }, [hasAnalyzedFood]);
+
+  useEffect(() => {
     if (parentalSettings.privateIncognitoMode) {
       localStorage.removeItem('foodlens_scan_history');
     } else {
@@ -308,6 +316,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addScanHistory = (food: FoodItem, thumbUrl?: string) => {
     setCurrentFood(food);
+    setHasAnalyzedFood(true);
     if (!parentalSettings.privateIncognitoMode) {
       const newItem: ScanHistoryItem = {
         id: 'scan-' + Date.now(),
@@ -464,6 +473,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         currentFood,
         setCurrentFood,
+        hasAnalyzedFood,
         scanHistory,
         addScanHistory,
         clearScanHistory,
