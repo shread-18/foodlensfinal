@@ -11,11 +11,18 @@ import {
   Sparkles,
   Bell,
   Sliders,
-  Check
+  Check,
+  Activity,
+  Zap,
+  Target
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { DailySummary, FoodItem } from '../types/food';
+import { DailySummary } from '../types/food';
 import { sounds, sendLocalNotification } from '../utils/notifications';
+import { FuturisticCard } from './ui/FuturisticCard';
+import { GlowButton } from './ui/GlowButton';
+import { StatusBadge } from './ui/StatusBadge';
+import { SectionHeader } from './ui/SectionHeader';
 
 interface DailyGoalsIntakeProps {
   summary: DailySummary;
@@ -50,10 +57,12 @@ export const DailyGoalsIntake: React.FC<DailyGoalsIntakeProps> = ({
   const waterPercent = Math.min(100, Math.round((summary.waterIntakeMl / targetWater) * 100));
   const proteinPercent = Math.min(100, Math.round((summary.totalProtein / targetProtein) * 100));
 
-  // Are goals achieved?
+  // Overall Daily Health Score
   const isHydrated = summary.waterIntakeMl >= targetWater;
   const isSugarSafe = summary.totalSugar <= maxSugarCap;
   const isProteinMet = summary.totalProtein >= targetProtein * 0.7;
+  const completedTargets = (isHydrated ? 1 : 0) + (isSugarSafe ? 1 : 0) + (isProteinMet ? 1 : 0) + (summary.totalCalories > 0 ? 1 : 0);
+  const overallProgressPercent = Math.min(100, Math.round((completedTargets / 4) * 100));
   const allGoalsAchieved = isHydrated && isSugarSafe && isProteinMet;
 
   const handleAddCustom = (e: React.FormEvent) => {
@@ -82,279 +91,398 @@ export const DailyGoalsIntake: React.FC<DailyGoalsIntakeProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto pb-12">
-      {/* Header & Refresh Goals */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-            Nutrition & Habit Protocol
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mt-1">
-            Daily Intake & Recommendations
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Track daily targets, stay within safe sugar limits, and achieve your health streak.
-          </p>
+    <div className="space-y-8 max-w-5xl mx-auto pb-16">
+      {/* 1. Header & Quick Actions */}
+      <FuturisticCard variant="emerald" className="p-6 md:p-8">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge status="online" label="HEALTH COMMAND CENTER" sublabel="TELEMETRY" />
+              {isKidMode && (
+                <span className="text-[10px] font-fun font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/40">
+                  🧒 Kid Targets Active (24g Sugar Limit)
+                </span>
+              )}
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-white font-display tracking-tight">
+              Daily Health Status
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400 font-tech">
+              Continuous dietary budget tracking, WHO free-sugar ceiling, and hydration monitoring
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <GlowButton
+              size="md"
+              variant="primary"
+              onClick={() => setShowAddModal(true)}
+              icon={<Plus className="w-4 h-4 text-slate-950" />}
+            >
+              Log Custom Food
+            </GlowButton>
+
+            <GlowButton
+              size="md"
+              variant="secondary"
+              onClick={() => {
+                if (confirm('Refresh and reset today’s goals and logged intake back to 0?')) {
+                  sounds.playScanClick();
+                  onResetGoals();
+                }
+              }}
+              icon={<RotateCcw className="w-4 h-4 text-cyan-400" />}
+            >
+              Refresh Goals
+            </GlowButton>
+          </div>
         </div>
+      </FuturisticCard>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          {/* Quick Add Custom Food */}
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex-1 sm:flex-initial px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-2xl shadow-sm flex items-center justify-center gap-1.5 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Intake</span>
-          </button>
+      {/* 2. Central Daily Progress Status Banner */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+        {/* Left: Overall Health Command Center Dial */}
+        <FuturisticCard variant="emerald" cornerBrackets={true} className="md:col-span-5 p-6 flex flex-col items-center justify-center text-center">
+          <div className="relative w-40 h-40 flex items-center justify-center">
+            <svg className="w-full h-full -rotate-90">
+              <circle
+                cx="80"
+                cy="80"
+                r="64"
+                stroke="rgba(255, 255, 255, 0.08)"
+                strokeWidth="12"
+                fill="none"
+              />
+              <circle
+                cx="80"
+                cy="80"
+                r="64"
+                stroke="#00F5A0"
+                strokeWidth="12"
+                strokeDasharray={2 * Math.PI * 64}
+                strokeDashoffset={2 * Math.PI * 64 - (overallProgressPercent / 100) * 2 * Math.PI * 64}
+                strokeLinecap="round"
+                fill="none"
+                style={{
+                  filter: 'drop-shadow(0 0 10px rgba(0,245,160,0.5))',
+                  transition: 'stroke-dashoffset 1s ease-out',
+                }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+              <span className="text-3xl font-black font-display text-white">
+                {overallProgressPercent}%
+              </span>
+              <span className="text-[10px] font-tech text-emerald-400 uppercase tracking-widest">
+                ON TRACK
+              </span>
+            </div>
+          </div>
 
-          {/* Refresh / Reset Goals as requested */}
-          <button
-            onClick={() => {
-              if (confirm('Refresh and reset today’s goals and logged intake back to 0?')) {
-                sounds.playScanClick();
-                onResetGoals();
-              }
-            }}
-            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition-all"
-            title="Refresh Goals"
-          >
-            <RotateCcw className="w-4 h-4 text-emerald-600" />
-            <span>Refresh Goals</span>
-          </button>
+          <div className="mt-4 pt-3 border-t border-slate-800 w-full flex items-center justify-between text-xs font-tech">
+            <span className="text-slate-400">HEALTH PROTOCOL</span>
+            <span className="text-emerald-400 font-bold">{completedTargets}/4 TARGETS MET</span>
+          </div>
+        </FuturisticCard>
+
+        {/* Right: Celebratory / Status Alert Card */}
+        <div className="md:col-span-7">
+          {allGoalsAchieved ? (
+            <div className="p-6 rounded-3xl bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-cyan-500/20 border border-emerald-400/50 shadow-[0_0_25px_rgba(0,245,160,0.2)] space-y-2">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">🏆</span>
+                <div>
+                  <h3 className="font-display font-black text-lg text-white">
+                    Congratulations! All Health Targets Achieved!
+                  </h3>
+                  <p className="text-xs text-emerald-200 mt-0.5">
+                    You kept free sugars under the recommended cap, hit your hydration goal, and fueled with clean protein.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <FuturisticCard variant="neutral" className="p-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-base font-bold font-display text-white">
+                    Daily Nutrition Protocol
+                  </h3>
+                </div>
+                <StatusBadge status="active" label="MONITORING" />
+              </div>
+
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Log packaged meals via the AR Scanner or Photo Upload. FoodLens automatically tallies calories, sugars, fats, and protein against WHO safe guidelines.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800">
+                  <span className="text-[10px] font-tech text-slate-400 uppercase block">Sugar Safe Margin</span>
+                  <span className="text-sm font-bold font-tech text-emerald-400">
+                    {Math.max(0, maxSugarCap - summary.totalSugar).toFixed(1)}g remaining
+                  </span>
+                </div>
+
+                <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800">
+                  <span className="text-[10px] font-tech text-slate-400 uppercase block">Hydration Needed</span>
+                  <span className="text-sm font-bold font-tech text-cyan-400">
+                    {Math.max(0, targetWater - summary.waterIntakeMl)} ml remaining
+                  </span>
+                </div>
+              </div>
+            </FuturisticCard>
+          )}
         </div>
       </div>
 
-      {/* All Goals Achieved Celebratory Banner */}
-      {allGoalsAchieved ? (
-        <div className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white p-5 rounded-3xl shadow-lg flex items-center justify-between gap-4 animate-bounce">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-white/20 rounded-2xl text-2xl">🏆</div>
-            <div>
-              <h3 className="font-extrabold text-base">Congratulations! All Goals Achieved Today!</h3>
-              <p className="text-xs text-emerald-100">
-                You maintained low free sugars, met your hydration target, and fueled with clean protein!
-              </p>
-            </div>
-          </div>
-          <span className="font-fun font-bold text-xs px-3 py-1.5 bg-white text-emerald-700 rounded-xl shadow-sm shrink-0">
-            100% Score!
-          </span>
-        </div>
-      ) : (
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            <span className="text-slate-700 dark:text-slate-300 font-medium">
-              Daily Target Status: Complete all 4 recommendations below to unlock today’s health trophy!
-            </span>
-          </div>
-          <span className="font-bold text-emerald-600 font-mono">
-            {((isHydrated ? 1 : 0) + (isSugarSafe ? 1 : 0) + (isProteinMet ? 1 : 0))}/3 Targets
-          </span>
-        </div>
-      )}
-
-      {/* 4 Core Goal Cards */}
+      {/* 3. Core Nutrient Telemetry Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Goal 1: Calorie Target */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-3">
+        {/* Calories Card */}
+        <FuturisticCard variant="neutral" className="p-5 flex flex-col justify-between space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Daily Calories</span>
-            <div className="p-2 bg-orange-100 dark:bg-orange-950 text-orange-600 rounded-xl">
+            <span className="text-xs font-tech font-bold uppercase tracking-wider text-slate-400">Calories</span>
+            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
               <Flame className="w-4 h-4" />
             </div>
           </div>
+
           <div>
-            <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
-              {summary.totalCalories} <span className="text-xs font-normal text-slate-400">/ {targetCalories} kcal</span>
+            <div className="text-2xl font-black font-display text-white">
+              {summary.totalCalories} <span className="text-xs font-tech text-slate-400">/ {targetCalories} kcal</span>
             </div>
-            <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden mt-2">
+            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden mt-2">
               <div
                 style={{ width: `${calPercent}%` }}
-                className="h-full bg-orange-500 rounded-full transition-all"
+                className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full transition-all duration-700 shadow-[0_0_8px_#FBBF24]"
               />
             </div>
           </div>
-          <p className="text-[11px] text-slate-400">
-            Recommended energy budget
-          </p>
-        </div>
 
-        {/* Goal 2: Free Sugar Ceiling */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-3">
+          <span className="text-[10px] font-tech text-slate-400">Energy intake budget</span>
+        </FuturisticCard>
+
+        {/* Free Sugar Ceiling Card */}
+        <FuturisticCard
+          variant={summary.totalSugar > maxSugarCap ? 'neutral' : 'emerald'}
+          className={`p-5 flex flex-col justify-between space-y-3 ${
+            summary.totalSugar > maxSugarCap ? '!border-rose-500/50' : ''
+          }`}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Sugar Limit (Cap)</span>
+            <span className="text-xs font-tech font-bold uppercase tracking-wider text-slate-400">Sugar Limit</span>
             <div
-              className={`p-2 rounded-xl ${
+              className={`p-2 rounded-xl border ${
                 summary.totalSugar > maxSugarCap
-                  ? 'bg-rose-100 text-rose-600 dark:bg-rose-950'
-                  : 'bg-amber-100 text-amber-600 dark:bg-amber-950'
+                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
               }`}
             >
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
+
           <div>
             <div
-              className={`text-2xl font-extrabold ${
-                summary.totalSugar > maxSugarCap ? 'text-rose-600' : 'text-slate-900 dark:text-white'
+              className={`text-2xl font-black font-display ${
+                summary.totalSugar > maxSugarCap ? 'text-rose-400' : 'text-white'
               }`}
             >
-              {summary.totalSugar}g <span className="text-xs font-normal text-slate-400">/ Max {maxSugarCap}g</span>
+              {summary.totalSugar}g <span className="text-xs font-tech text-slate-400">/ Max {maxSugarCap}g</span>
             </div>
-            <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden mt-2">
+            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden mt-2">
               <div
                 style={{ width: `${Math.min(100, sugarPercent)}%` }}
-                className={`h-full rounded-full transition-all ${
-                  summary.totalSugar > maxSugarCap ? 'bg-rose-500' : 'bg-amber-500'
+                className={`h-full rounded-full transition-all duration-700 ${
+                  summary.totalSugar > maxSugarCap
+                    ? 'bg-rose-500 shadow-[0_0_10px_#FF4D6D]'
+                    : 'bg-emerald-500 shadow-[0_0_10px_#00F5A0]'
                 }`}
               />
             </div>
           </div>
-          <p className="text-[11px] text-slate-400">
-            {summary.totalSugar > maxSugarCap ? '⚠️ Limit exceeded!' : '✓ Safe under threshold'}
-          </p>
-        </div>
 
-        {/* Goal 3: Hydration */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-3">
+          <span className="text-[10px] font-tech text-slate-400">
+            {summary.totalSugar > maxSugarCap ? '⚠️ WHO threshold exceeded!' : '✓ Safe under limit'}
+          </span>
+        </FuturisticCard>
+
+        {/* Hydration Reservoir Card */}
+        <FuturisticCard variant="cyan" className="p-5 flex flex-col justify-between space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Water Hydration</span>
-            <div className="p-2 bg-sky-100 dark:bg-sky-950 text-sky-600 rounded-xl">
+            <span className="text-xs font-tech font-bold uppercase tracking-wider text-slate-400">Hydration</span>
+            <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
               <Droplet className="w-4 h-4" />
             </div>
           </div>
+
           <div>
-            <div className="text-2xl font-extrabold text-sky-600">
-              {summary.waterIntakeMl} <span className="text-xs font-normal text-slate-400">/ {targetWater} ml</span>
+            <div className="text-2xl font-black font-display text-cyan-400">
+              {summary.waterIntakeMl} <span className="text-xs font-tech text-slate-400">/ {targetWater} ml</span>
             </div>
-            <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden mt-2">
+            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden mt-2">
               <div
                 style={{ width: `${waterPercent}%` }}
-                className="h-full bg-sky-500 rounded-full transition-all"
+                className="h-full bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full transition-all duration-700 shadow-[0_0_8px_#00D9FF]"
               />
             </div>
           </div>
-          <div className="flex items-center gap-1.5 pt-1">
+
+          <div className="flex items-center gap-2 pt-1">
             <button
               onClick={() => handleWaterClick(250)}
-              className="flex-1 py-1 bg-sky-50 dark:bg-sky-950 hover:bg-sky-100 text-sky-700 dark:text-sky-300 font-bold text-[10px] rounded-lg border border-sky-200 dark:border-sky-800 text-center"
+              className="flex-1 py-1 px-2 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 font-tech font-bold text-[10px] rounded-lg border border-cyan-400/30 transition-all cursor-pointer text-center"
             >
               +250ml
             </button>
             <button
               onClick={() => handleWaterClick(500)}
-              className="flex-1 py-1 bg-sky-50 dark:bg-sky-950 hover:bg-sky-100 text-sky-700 dark:text-sky-300 font-bold text-[10px] rounded-lg border border-sky-200 dark:border-sky-800 text-center"
+              className="flex-1 py-1 px-2 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 font-tech font-bold text-[10px] rounded-lg border border-cyan-400/30 transition-all cursor-pointer text-center"
             >
               +500ml
             </button>
           </div>
-        </div>
+        </FuturisticCard>
 
-        {/* Goal 4: Protein */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-3">
+        {/* Protein Builder Card */}
+        <FuturisticCard variant="emerald" className="p-5 flex flex-col justify-between space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Protein Builder</span>
-            <div className="p-2 bg-emerald-100 dark:bg-emerald-950 text-emerald-600 rounded-xl">
+            <span className="text-xs font-tech font-bold uppercase tracking-wider text-slate-400">Protein</span>
+            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               <Check className="w-4 h-4" />
             </div>
           </div>
+
           <div>
-            <div className="text-2xl font-extrabold text-emerald-600">
-              {summary.totalProtein}g <span className="text-xs font-normal text-slate-400">/ {targetProtein}g</span>
+            <div className="text-2xl font-black font-display text-emerald-400">
+              {summary.totalProtein}g <span className="text-xs font-tech text-slate-400">/ {targetProtein}g</span>
             </div>
-            <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden mt-2">
+            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden mt-2">
               <div
                 style={{ width: `${proteinPercent}%` }}
-                className="h-full bg-emerald-500 rounded-full transition-all"
+                className="h-full bg-gradient-to-r from-emerald-400 to-teal-400 rounded-full transition-all duration-700 shadow-[0_0_8px_#00F5A0]"
               />
             </div>
           </div>
-          <p className="text-[11px] text-slate-400">
-            Bone & muscle recovery
-          </p>
-        </div>
+
+          <span className="text-[10px] font-tech text-slate-400">Cellular & muscle recovery</span>
+        </FuturisticCard>
       </div>
 
-      {/* Custom Add Intake Modal */}
+      {/* 4. Hydration Graduated Reservoir Visualization */}
+      <FuturisticCard variant="cyan" className="p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-bold font-display text-base text-white flex items-center gap-2">
+              <Droplet className="w-4 h-4 text-cyan-400" />
+              Hydration Reservoir Status
+            </h3>
+            <p className="text-xs text-slate-400 font-tech">Graduated reservoir measuring cell hydration balance</p>
+          </div>
+          <span className="text-xs font-tech font-bold text-cyan-400">{summary.waterIntakeMl} / {targetWater} ML</span>
+        </div>
+
+        {/* Visual Reservoir Tube */}
+        <div className="space-y-2">
+          <div className="relative w-full h-8 bg-slate-950 rounded-xl border border-cyan-500/30 overflow-hidden flex items-center p-1">
+            <div
+              className="h-full rounded-lg bg-gradient-to-r from-blue-600 via-cyan-400 to-teal-300 transition-all duration-1000 shadow-[0_0_15px_rgba(0,217,255,0.4)]"
+              style={{ width: `${waterPercent}%` }}
+            />
+          </div>
+
+          {/* Graduated Tick Steps */}
+          <div className="flex justify-between text-[10px] font-tech text-slate-400 px-1">
+            <span>0ml</span>
+            <span>250ml</span>
+            <span>500ml</span>
+            <span>1000ml</span>
+            <span>1500ml</span>
+            <span className="font-bold text-cyan-400">2000ml (Goal)</span>
+          </div>
+        </div>
+      </FuturisticCard>
+
+      {/* 5. Custom Add Intake Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+          <FuturisticCard variant="emerald" cornerBrackets={true} className="w-full max-w-md p-6 space-y-4 shadow-2xl">
             <div className="flex justify-between items-center">
-              <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+              <h3 className="font-display font-extrabold text-base text-white">
                 Log Quick Meal or Snack
               </h3>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm"
+                className="text-slate-400 hover:text-white text-sm cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleAddCustom} className="space-y-3">
+            <form onSubmit={handleAddCustom} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Food / Drink Name</label>
+                <label className="text-xs font-tech font-bold text-slate-300 block mb-1">
+                  Food / Drink Name
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Greek Yogurt Bowl"
+                  placeholder="e.g. Sprouted Green Moong Bowl"
                   value={customName}
                   onChange={(e) => setCustomName(e.target.value)}
-                  className="w-full text-xs p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white mt-1"
+                  className="w-full text-xs p-3 rounded-xl border border-slate-700 bg-slate-900 text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none"
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Calories</label>
+                  <label className="text-[11px] font-tech font-bold text-slate-300 block mb-1">Calories</label>
                   <input
                     type="number"
-                    placeholder="150"
+                    placeholder="180"
                     value={customCalories}
                     onChange={(e) => setCustomCalories(e.target.value)}
-                    className="w-full text-xs p-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white mt-1"
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-700 bg-slate-900 text-white focus:border-emerald-400 focus:outline-none font-tech"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Sugar (g)</label>
+                  <label className="text-[11px] font-tech font-bold text-slate-300 block mb-1">Sugar (g)</label>
                   <input
                     type="number"
-                    placeholder="4"
+                    placeholder="3"
                     value={customSugar}
                     onChange={(e) => setCustomSugar(e.target.value)}
-                    className="w-full text-xs p-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white mt-1"
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-700 bg-slate-900 text-white focus:border-emerald-400 focus:outline-none font-tech"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Protein (g)</label>
+                  <label className="text-[11px] font-tech font-bold text-slate-300 block mb-1">Protein (g)</label>
                   <input
                     type="number"
-                    placeholder="12"
+                    placeholder="14"
                     value={customProtein}
                     onChange={(e) => setCustomProtein(e.target.value)}
-                    className="w-full text-xs p-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white mt-1"
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-700 bg-slate-900 text-white focus:border-emerald-400 focus:outline-none font-tech"
                   />
                 </div>
               </div>
 
-              <div className="pt-2 flex justify-end gap-2">
+              <div className="pt-2 flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 border rounded-xl text-xs font-bold text-slate-600"
+                  className="px-4 py-2 border border-slate-700 hover:border-slate-500 rounded-xl text-xs font-tech text-slate-300 cursor-pointer"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm"
-                >
+                <GlowButton size="sm" variant="primary" type="submit">
                   Log to Daily Goals
-                </button>
+                </GlowButton>
               </div>
             </form>
-          </div>
+          </FuturisticCard>
         </div>
       )}
     </div>

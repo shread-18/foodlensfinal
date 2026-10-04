@@ -160,31 +160,37 @@ export const KidsBugBattleAnimation: React.FC<KidsBugBattleAnimationProps> = ({
   const isPoweredUp = stage === 'healthy-powerup' || stage === 'battle' || stage === 'victory';
 
   return (
-    <div className="space-y-6">
-      {/* Playful App Header for Kids Animation */}
-      <div className="bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="space-y-6 max-w-6xl mx-auto pb-12">
+      {/* Playful Futuristic Arena Header */}
+      <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 rounded-3xl p-6 border border-amber-400/40 backdrop-blur-xl relative overflow-hidden shadow-[0_10px_35px_rgba(251,191,36,0.15)]">
+        <div className="corner-bracket-tl !border-amber-400" />
+        <div className="corner-bracket-tr !border-amber-400" />
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-xs font-black font-fun tracking-wide backdrop-blur-md mb-1.5">
-              <span>🎮 Interactive Kids Health World</span>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-black font-fun tracking-wide backdrop-blur-md mb-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              <span>SUPERHERO NUTRITION ARENA</span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-fun font-bold">
-              Feed & Transform: Fight the Tummy Bugs!
+            <h2 className="text-2xl sm:text-3xl font-fun font-black text-white tracking-wide">
+              TUMMY BUG BATTLE 🐛⚡
             </h2>
-            <p className="text-xs text-white/90 max-w-xl mt-0.5">
-              See what happens inside your body! Junk food creates greedy tummy insects and makes you heavy and tired, while healthy food makes you slim, fit, and gives you superhero bug-zapping powers!
+            <p className="text-xs sm:text-sm text-amber-100/90 max-w-xl mt-1 font-sans">
+              "Eat smart. Power up. Defeat the bugs!" See how nutritious foods charge your hero aura and blast away greedy sugar bugs!
             </p>
           </div>
 
           {/* Boy / Girl Avatar Toggle */}
-          <div className="flex items-center gap-2 bg-white/20 backdrop-blur-md p-1.5 rounded-2xl border border-white/30 shrink-0">
+          <div className="flex items-center gap-2 bg-slate-900/80 backdrop-blur-md p-1.5 rounded-2xl border border-amber-400/30 shrink-0">
             <button
               onClick={() => {
                 setCharacterGender('boy');
                 sounds.playScanClick();
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-fun font-bold text-xs transition-all ${
-                characterGender === 'boy' ? 'bg-white text-blue-600 shadow' : 'text-white/80 hover:text-white'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-fun font-bold text-xs transition-all cursor-pointer ${
+                characterGender === 'boy'
+                  ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-slate-950 font-black shadow-md'
+                  : 'text-slate-300 hover:text-white'
               }`}
             >
               <span className="text-base">👦</span>
@@ -195,8 +201,10 @@ export const KidsBugBattleAnimation: React.FC<KidsBugBattleAnimationProps> = ({
                 setCharacterGender('girl');
                 sounds.playScanClick();
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-fun font-bold text-xs transition-all ${
-                characterGender === 'girl' ? 'bg-white text-rose-600 shadow' : 'text-white/80 hover:text-white'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-fun font-bold text-xs transition-all cursor-pointer ${
+                characterGender === 'girl'
+                  ? 'bg-gradient-to-r from-rose-500 to-amber-500 text-slate-950 font-black shadow-md'
+                  : 'text-slate-300 hover:text-white'
               }`}
             >
               <span className="text-base">👧</span>
@@ -209,28 +217,33 @@ export const KidsBugBattleAnimation: React.FC<KidsBugBattleAnimationProps> = ({
       {/* Main Interactive Stage & Character Canvas */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Character Stage (Interactive Animation Frame) */}
-        <div className="lg:col-span-8 bg-gradient-to-b from-sky-100 via-emerald-50 to-amber-50 dark:from-slate-900 dark:via-slate-850 dark:to-slate-950 rounded-3xl p-6 border-4 border-amber-300 dark:border-slate-800 shadow-xl relative min-h-[460px] flex flex-col justify-between overflow-hidden select-none">
+        <div className="lg:col-span-8 bg-slate-950/80 rounded-3xl p-6 border-2 border-amber-400/30 shadow-[0_0_30px_rgba(251,191,36,0.15)] relative min-h-[480px] flex flex-col justify-between overflow-hidden select-none">
+          <div className="corner-bracket-tl !border-amber-400" />
+          <div className="corner-bracket-tr !border-amber-400" />
+          <div className="corner-bracket-bl !border-amber-400" />
+          <div className="corner-bracket-br !border-amber-400" />
+
           {/* Energy Bar at Top */}
-          <div className="relative z-10 flex items-center justify-between gap-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/40 shadow-sm">
+          <div className="relative z-10 flex items-center justify-between gap-3 bg-slate-900/90 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-700/80 shadow-md">
             <div className="flex items-center gap-2">
               <span className="text-lg">{isPoweredUp ? '⚡' : isBloated ? '😴' : '😊'}</span>
-              <span className="font-fun font-bold text-xs text-slate-800 dark:text-slate-200">
-                {characterGender === 'boy' ? "Leo's Energy:" : "Maya's Energy:"}
+              <span className="font-fun font-bold text-xs text-slate-200">
+                {characterGender === 'boy' ? "Leo's Super Energy:" : "Maya's Super Energy:"}
               </span>
             </div>
-            <div className="flex-1 max-w-xs bg-slate-200 dark:bg-slate-700 h-3.5 rounded-full overflow-hidden relative">
+            <div className="flex-1 max-w-xs bg-slate-800 h-4 rounded-full overflow-hidden relative border border-slate-700">
               <div
                 style={{ width: `${heroEnergy}%` }}
                 className={`h-full transition-all duration-700 rounded-full ${
                   isPoweredUp
-                    ? 'bg-gradient-to-r from-emerald-400 to-amber-400 animate-pulse'
+                    ? 'bg-gradient-to-r from-emerald-400 via-teal-300 to-amber-400 animate-pulse shadow-[0_0_12px_#00F5A0]'
                     : isBloated
-                    ? 'bg-rose-500'
-                    : 'bg-sky-400'
+                    ? 'bg-rose-500 shadow-[0_0_10px_#FF4D6D]'
+                    : 'bg-cyan-400'
                 }`}
               />
             </div>
-            <span className="font-fun font-black text-xs text-slate-900 dark:text-white">{heroEnergy}%</span>
+            <span className="font-tech font-black text-xs text-emerald-400">{heroEnergy}%</span>
           </div>
 
           {/* Center Character SVG Graphic with Dynamic Morphing */}

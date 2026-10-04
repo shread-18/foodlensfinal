@@ -19,14 +19,117 @@ import {
   Heart
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { recognize } from 'tesseract.js';
 import { FoodItem, ParentalSettings } from '../types/food';
 import { OFFICIAL_HACKATHON_DATASET } from '../data/foodDataset';
+import { evaluateFoodNutrition } from '../services/nutritionAlgorithm';
 import { sounds } from '../utils/notifications';
+import { StatusBadge } from './ui/StatusBadge';
+import { GlowButton } from './ui/GlowButton';
+import { FuturisticCard } from './ui/FuturisticCard';
 
 interface ARFoodScannerProps {
   onSelectFood: (food: FoodItem) => void;
   parentalSettings: ParentalSettings;
   onOpenKidVisualizer: (food: FoodItem) => void;
+}
+
+interface OCRValue {
+  value: number;
+  unit: string;
+}
+
+function findOCRValue(text: string, labelPattern: RegExp, excludedPattern?: RegExp): OCRValue | undefined {
+  for (const line of text.split(/\r?\n/)) {
+    if (excludedPattern?.test(line)) continue;
+    const labelMatch = labelPattern.exec(line);
+    if (!labelMatch) continue;
+
+    const remainder = line.slice(labelMatch.index + labelMatch[0].length).replace(/^\s*\([^)]*\)/, '');
+    const valueMatch = remainder.match(/^\s*[:|=]?\s*(\d+(?:[.,]\d+)?)\s*(kcal|kj|g|mg)?\b/i);
+    if (!valueMatch) continue;
+
+    return {
+      value: Number(valueMatch[1].replace(',', '.')),
+      unit: (valueMatch[2] || '').toLowerCase(),
+    };
+  }
+
+  return undefined;
+}
+
+function createFoodFromOCR(text: string): { food: FoodItem; missing: string[] } | null {
+  const caloriesValue = findOCRValue(text, /\b(?:energy|calories?)\b/i);
+  const sugarValue = findOCRValue(text, /\b(?:of\s+which\s+)?(?:total\s+)?sugars?\b/i);
+  const fatValue = findOCRValue(text, /\b(?:total\s+fat|fat)\b/i, /saturated|trans/i);
+  const saturatedFatValue = findOCRValue(text, /\b(?:saturated\s+fat|sat\.?\s*fat)\b/i);
+  const proteinValue = findOCRValue(text, /\bprotein\b/i);
+  const sodiumValue = findOCRValue(text, /\bsodium\b/i);
+
+  if (!caloriesValue || !sugarValue || !fatValue || !proteinValue) return null;
+
+  const calories = caloriesValue.unit === 'kj' ? caloriesValue.value / 4.184 : caloriesValue.value;
+  const sodium = sodiumValue
+    ? sodiumValue.value * (sodiumValue.unit === 'g' ? 1000 : 1)
+    : undefined;
+  const totalFats = fatValue.value;
+  const sugar = sugarValue.value;
+  const protein = proteinValue.value;
+  const saturatedFat = saturatedFatValue?.value;
+  const nutrition = evaluateFoodNutrition({ calories, sugar, totalFats, saturatedFat, protein, sodium });
+  const missing = [
+    !saturatedFatValue && 'saturated fat',
+    !sodiumValue && 'sodium',
+  ].filter((value): value is string => Boolean(value));
+  const name = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .find((line) => line.length >= 3 && line.length <= 60 && /[a-z]/i.test(line) &&
+      !/nutrition|ingredients|serving|calories|energy|protein|sugar|fat|sodium|per 100/i.test(line))
+    || 'Scanned food label';
+  const hazardLevel = missing.length && nutrition.kidHazardLevel === 'low'
+    ? 'moderate'
+    : nutrition.kidHazardLevel;
+
+  return {
+    food: {
+      id: `OCR-${Date.now().toString(36)}`,
+      name,
+      brand: 'On-device label scan',
+      category: 'Packaged Food',
+      calories: Math.round(calories),
+      sugar,
+      totalFats,
+      saturatedFat: saturatedFat ?? 0,
+      protein,
+      sodium: sodium ?? 0,
+      allergens: [],
+      recommendedAmount: 'Use the serving size printed on the package',
+      recommendedTime: 'Any meal or snack',
+      frequency: 'Check the complete label before regular use',
+      positiveEffects: 'Nutrition values were read from the package label.',
+      excessIntakeEffects: 'OCR results may be incomplete; verify the printed package.',
+      healthScore: nutrition.finalScore,
+      nutriGrade: nutrition.nutriGrade,
+      consumptionSignal: missing.length && nutrition.signal === 'GOOD' ? 'OK' : nutrition.signal,
+      kidSuitability: {
+        isRecommendedForKids: missing.length === 0 && hazardLevel === 'low',
+        minimumAge: 0,
+        hazardLevel,
+        kidWarningText: missing.length
+          ? `OCR could not read ${missing.join(' and ')}. Verify the full package label before making a decision.`
+          : 'OCR estimates can be imperfect. Verify the printed package label.',
+        sugarSpoonsCount: Math.round((sugar / 4) * 10) / 10,
+        visualHarmEffects: [],
+      },
+      healthierAlternatives: [],
+      arFloatingTags: [
+        { label: 'On-device OCR', type: 'neutral', x: 30, y: 35 },
+        ...(missing.length ? [{ label: 'Partial label', type: 'warning' as const, x: 70, y: 45 }] : []),
+      ],
+    },
+    missing,
+  };
 }
 
 export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
@@ -37,10 +140,13 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
   const [selectedFood, setSelectedFood] = useState<FoodItem>(OFFICIAL_HACKATHON_DATASET[3]); // Maggi by default
   const [isScanning, setIsScanning] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [isCameraReady, setIsCameraReady] = useState(false);
+  const [cameraFacingMode, setCameraFacingMode] = useState<'environment' | 'user'>('environment');
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [customImage, setCustomImage] = useState<string | null>(null);
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [isUsingOcr, setIsUsingOcr] = useState(false);
   const [showAROverlay, setShowAROverlay] = useState(true);
   const [activePortionGrams, setActivePortionGrams] = useState<number>(70);
 
@@ -81,44 +187,70 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
   };
 
   // Start real webcam stream
-  const startCamera = async () => {
+  const startCamera = async (facingMode = cameraFacingMode) => {
     try {
       setAnalysisError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
+      setIsCameraReady(false);
+      const dimensions = { width: { ideal: 1280 }, height: { ideal: 720 } };
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { ...dimensions, facingMode: { exact: facingMode } },
+          audio: false,
+        });
+      } catch (cameraError) {
+        const errorName = (cameraError as DOMException).name;
+        if (!['OverconstrainedError', 'ConstraintNotSatisfiedError', 'NotFoundError'].includes(errorName)) {
+          throw cameraError;
+        }
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { ...dimensions, facingMode: { ideal: facingMode } },
+          audio: false,
+        });
+      }
+
+      const actualFacingMode = stream.getVideoTracks()[0]?.getSettings().facingMode;
       setCameraStream(stream);
+      setCameraFacingMode(actualFacingMode === 'user' || actualFacingMode === 'environment' ? actualFacingMode : facingMode);
       setIsCameraActive(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
+      if (actualFacingMode && actualFacingMode !== facingMode) {
+        setAnalysisError(`The ${facingMode === 'environment' ? 'back' : 'front'} camera is unavailable. Using the available ${actualFacingMode === 'user' ? 'front' : 'back'} camera.`);
       }
     } catch (err: any) {
       console.warn('Camera access unavailable:', err);
-      setAnalysisError('Camera not accessible. You can upload an image or choose one of the hackathon dataset packages.');
+      setAnalysisError('Camera not accessible. Allow camera access, or upload a clear photo of the package label.');
       setIsCameraActive(false);
     }
   };
 
   const stopCamera = () => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
-      setCameraStream(null);
-    }
+    setCameraStream(null);
     setIsCameraActive(false);
+    setIsCameraReady(false);
+  };
+
+  const switchCamera = () => {
+    const nextFacingMode = cameraFacingMode === 'environment' ? 'user' : 'environment';
+    cameraStream?.getTracks().forEach((track) => track.stop());
+    setCameraStream(null);
+    setIsCameraReady(false);
+    void startCamera(nextFacingMode);
   };
 
   // Capture frame from active camera
   const captureCameraFrame = () => {
-    if (!videoRef.current) return;
+    const video = videoRef.current;
+    if (!video || !isCameraReady || video.videoWidth === 0) {
+      setAnalysisError('Camera is still starting. Wait for the preview, then capture the label.');
+      return;
+    }
     sounds.playScanClick();
     const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth || 640;
-    canvas.height = videoRef.current.videoHeight || 480;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
     setCustomImage(dataUrl);
     stopCamera();
@@ -135,13 +267,13 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
     reader.onload = (event) => {
       const dataUrl = event.target?.result as string;
       setCustomImage(dataUrl);
-      analyzeWithGemini(dataUrl);
+      analyzeWithGemini(dataUrl, file.type || 'image/jpeg');
     };
     reader.readAsDataURL(file);
   };
 
-  // Call Gemini 3.8 Flash API
-  const analyzeWithGemini = async (imageBase64: string) => {
+  // Call Gemini 2.5 Flash API
+  const analyzeWithGemini = async (imageBase64: string, mimeType = 'image/jpeg') => {
     setAiAnalyzing(true);
     setAnalysisError(null);
     setIsScanning(true);
@@ -152,7 +284,7 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageBase64,
-          mimeType: 'image/jpeg',
+          mimeType,
           queryText: 'Perform comprehensive nutrition and kid-safety hazard evaluation from package label.',
         }),
       });
@@ -162,6 +294,10 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
       }
 
       const json = await res.json();
+      if (json.source === 'smart-fallback') {
+        throw new Error('AI service quota exceeded. Using on-device OCR and local dataset.');
+      }
+
       if (json.data && json.data.productName) {
         const item: FoodItem = {
           id: 'AI-' + Date.now().toString(36),
@@ -208,10 +344,73 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
       }
     } catch (err: any) {
       console.warn('Gemini analysis fallback:', err);
-      setAnalysisError('AI Live OCR unavailable: showing nearest benchmark from Nexora dataset.');
-      // Auto-fallback to Maggi or Kinder Joy if error
-      setSelectedFood(OFFICIAL_HACKATHON_DATASET[4]); // Kinder Joy
-      sounds.playAlertPing();
+      setAnalysisError('AI service unavailable. Reading the captured label on this device...');
+      setIsUsingOcr(true);
+      try {
+        const { data } = await recognize(imageBase64, 'eng');
+        const text = data.text.toLowerCase();
+        
+        // Search dataset first using OCR text
+        let bestMatch = null;
+        let maxScore = 0;
+        const searchSpace = text.toLowerCase();
+        
+        for (const p of OFFICIAL_HACKATHON_DATASET) {
+          const nameWords = p.name.toLowerCase().split(' ').filter(w => w.length > 3);
+          const brandWords = p.brand.toLowerCase().split(' ').filter(w => w.length > 3);
+          let score = 0;
+          
+          for (const w of nameWords) {
+            if (searchSpace.includes(w)) score += 1;
+          }
+          for (const w of brandWords) {
+            if (searchSpace.includes(w)) score += 2; // Brand matches are stronger
+          }
+          
+          // Boost score if the brand is exact
+          if (p.brand.toLowerCase() !== 'detected pack' && searchSpace.includes(p.brand.toLowerCase())) {
+            score += 3;
+          }
+          
+          if (score > maxScore) {
+            maxScore = score;
+            bestMatch = p;
+          }
+        }
+        
+        const matched = maxScore >= 2 ? bestMatch : null;
+
+        if (matched) {
+          setSelectedFood(matched);
+          setAnalysisError(`Matched ${matched.name} from dataset using on-device OCR.`);
+          if (matched.consumptionSignal === 'GOOD') {
+            sounds.playSuccessChime();
+            triggerCelebration();
+          } else {
+            sounds.playAlertPing();
+          }
+          return;
+        }
+
+        const result = createFoodFromOCR(data.text);
+        if (!result) {
+          setAnalysisError('Could not read enough nutrition values. Keep the label flat, fill the frame, and try again. The sample data below is not from this scan.');
+          sounds.playAlertPing();
+          return;
+        }
+
+        setSelectedFood(result.food);
+        setAnalysisError(result.missing.length
+          ? `Label read with on-device OCR. Not detected: ${result.missing.join(', ')}. Verify these on the package.`
+          : 'Label read with on-device OCR. Verify the values against the printed package.');
+        sounds.playAlertPing();
+      } catch (ocrError) {
+        console.warn('On-device OCR failed:', ocrError);
+        setAnalysisError('On-device OCR could not start. Connect to the internet for its first-time language setup, then retry. The sample data below is not from this scan.');
+        sounds.playAlertPing();
+      } finally {
+        setIsUsingOcr(false);
+      }
     } finally {
       setAiAnalyzing(false);
       setIsScanning(false);
@@ -219,10 +418,23 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
   };
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (!cameraStream || !video) return;
+
+    video.srcObject = cameraStream;
+    const markReady = () => setIsCameraReady(true);
+    video.addEventListener('loadedmetadata', markReady);
+    void video.play().then(markReady).catch((error) => {
+      console.warn('Camera preview could not start:', error);
+      setAnalysisError('Camera opened but the preview could not start. Try switching cameras or reload the page.');
+    });
+
     return () => {
-      stopCamera();
+      video.removeEventListener('loadedmetadata', markReady);
+      cameraStream.getTracks().forEach((track) => track.stop());
+      video.srcObject = null;
     };
-  }, []);
+  }, [cameraStream]);
 
   const getSignalBadgeColor = (signal: string) => {
     switch (signal) {
@@ -253,55 +465,73 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
   };
 
   return (
-    <div className="space-y-6">
-      {/* Intro Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 p-4 rounded-2xl border border-emerald-200/60 dark:border-emerald-900/40">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white">
-              Live AR Food Package Scanner
-            </h2>
+    <div className="space-y-6 max-w-6xl mx-auto">
+      {/* HUD Scanner Control Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-900/60 border border-emerald-500/20 backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center">
+            <Camera className="w-5 h-5" />
           </div>
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1">
-            Point camera at food packaging to inspect nutrients, kid safety warnings, and battle tummy bugs!
-          </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold font-display text-white">
+                Live AR Food Package Scanner
+              </h2>
+              <StatusBadge status={isCameraActive ? 'online' : 'ready'} label={isCameraActive ? 'HUD SENSOR LIVE' : 'STANDBY'} />
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5 font-tech">
+              Real-time packaging detection, augmented telemetry tags & kid hazard alarms
+            </p>
+          </div>
         </div>
 
         {/* Viewfinder Controls */}
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           {!isCameraActive ? (
-            <button
-              onClick={startCamera}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
+            <GlowButton
+              size="sm"
+              variant="primary"
+              onClick={() => void startCamera()}
+              icon={<Camera className="w-4 h-4 text-slate-950" />}
             >
-              <Camera className="w-4 h-4" />
-              Open Camera
-            </button>
+              Open Camera Sensor
+            </GlowButton>
           ) : (
-            <div className="flex gap-2 w-full sm:w-auto">
-              <button
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <GlowButton
+                size="sm"
+                variant="cyan"
                 onClick={captureCameraFrame}
-                className="flex-1 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
+                disabled={!isCameraReady || aiAnalyzing}
+                icon={<Camera className="w-4 h-4 text-slate-950" />}
               >
-                📸 Capture & Analyze
+                {isCameraReady ? '📸 Capture & Analyze' : 'Starting sensor...'}
+              </GlowButton>
+              <button
+                onClick={switchCamera}
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-tech font-bold rounded-xl border border-slate-700 transition-colors cursor-pointer"
+                title={`Switch to ${cameraFacingMode === 'environment' ? 'front' : 'back'} camera`}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>{cameraFacingMode === 'environment' ? 'Front' : 'Back'}</span>
               </button>
               <button
                 onClick={stopCamera}
-                className="px-3 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl"
+                className="px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-tech rounded-xl border border-slate-700 transition-colors cursor-pointer"
               >
                 Close
               </button>
             </div>
           )}
 
-          <button
+          <GlowButton
+            size="sm"
+            variant="secondary"
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/60 shadow-sm transition-all"
+            icon={<Upload className="w-3.5 h-3.5 text-cyan-400" />}
           >
-            <Upload className="w-4 h-4 text-emerald-600" />
             Upload Photo
-          </button>
+          </GlowButton>
           <input
             type="file"
             ref={fileInputRef}
@@ -313,8 +543,8 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
       </div>
 
       {analysisError && (
-        <div className="p-3 text-xs bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 rounded-xl border border-amber-300 dark:border-amber-700 flex items-center gap-2">
-          <Info className="w-4 h-4 shrink-0 text-amber-600" />
+        <div className="p-3 text-xs bg-amber-500/10 text-amber-300 rounded-xl border border-amber-500/30 flex items-center gap-2.5 font-tech">
+          <Info className="w-4 h-4 shrink-0 text-amber-400" />
           <span>{analysisError}</span>
         </div>
       )}
@@ -322,7 +552,13 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
       {/* Main AR Scanning Canvas */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* AR Viewport Frame */}
-        <div className="lg:col-span-7 bg-slate-950 rounded-3xl overflow-hidden relative shadow-2xl border-4 border-slate-800 aspect-[4/3] sm:aspect-[16/10] flex items-center justify-center">
+        <div className="lg:col-span-7 bg-slate-950 rounded-3xl overflow-hidden relative shadow-[0_0_35px_rgba(0,245,160,0.12)] border border-emerald-500/30 aspect-[4/3] sm:aspect-[16/10] flex items-center justify-center">
+          {/* Cyber Targeting Corners */}
+          <div className="corner-bracket-tl w-5 h-5 !border-t-2 !border-l-2 !border-emerald-400" />
+          <div className="corner-bracket-tr w-5 h-5 !border-t-2 !border-r-2 !border-emerald-400" />
+          <div className="corner-bracket-bl w-5 h-5 !border-b-2 !border-l-2 !border-emerald-400" />
+          <div className="corner-bracket-br w-5 h-5 !border-b-2 !border-r-2 !border-emerald-400" />
+
           {/* Active Camera Video feed */}
           {isCameraActive ? (
             <video
@@ -336,14 +572,17 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
             <img
               src={customImage}
               alt="Scanned Food Packaging"
-              className="w-full h-full object-contain bg-slate-900"
+              className="w-full h-full object-contain bg-slate-950"
             />
           ) : (
             /* Interactive Simulated Food Packaging */
-            <div className="relative w-full h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 flex items-center justify-center p-6 select-none overflow-hidden">
+            <div className="relative w-full h-full bg-slate-950 flex items-center justify-center p-6 select-none overflow-hidden">
+              {/* Grid overlay */}
+              <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(0,245,160,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,245,160,0.04)_1px,transparent_1px)] bg-[size:28px_28px] pointer-events-none" />
+
               {/* Radial backdrop glow */}
               <div
-                className={`absolute w-72 h-72 rounded-full blur-3xl opacity-20 ${
+                className={`absolute w-80 h-80 rounded-full blur-3xl opacity-25 ${
                   selectedFood.consumptionSignal === 'GOOD'
                     ? 'bg-emerald-500'
                     : selectedFood.consumptionSignal === 'OK'
@@ -353,19 +592,19 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
               />
 
               {/* Graphic Mock of the Scanned Package */}
-              <div className="relative z-10 w-64 h-80 bg-white/10 dark:bg-slate-900/70 backdrop-blur-md rounded-2xl border-2 border-white/20 p-5 shadow-2xl flex flex-col justify-between text-white transform transition-transform hover:scale-102">
+              <div className="relative z-10 w-72 h-84 bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-emerald-500/30 p-5 shadow-2xl flex flex-col justify-between text-white transition-all hover:scale-[1.02]">
                 <div className="flex justify-between items-start">
                   <div>
-                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-white/20">
+                    <span className="text-[10px] uppercase font-tech font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
                       {selectedFood.category}
                     </span>
-                    <h3 className="font-extrabold text-lg mt-1 leading-snug">
+                    <h3 className="font-extrabold text-base mt-2 font-display text-white">
                       {selectedFood.name}
                     </h3>
-                    <p className="text-xs text-white/70">{selectedFood.brand}</p>
+                    <p className="text-xs text-slate-400 font-tech">{selectedFood.brand}</p>
                   </div>
                   <span
-                    className={`text-xs font-black px-2 py-1 rounded-md shadow ${getNutriGradeColor(
+                    className={`text-xs font-black px-2.5 py-1 rounded-md shadow-md ${getNutriGradeColor(
                       selectedFood.nutriGrade
                     )}`}
                   >
@@ -373,10 +612,10 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
                   </span>
                 </div>
 
-                {/* Package Center Illustration or Badge */}
+                {/* Package Center Illustration */}
                 <div className="my-auto text-center py-4">
-                  <div className="inline-block p-4 rounded-2xl bg-white/10 border border-white/20 shadow-inner">
-                    <span className="text-4xl">
+                  <div className="inline-block p-4 rounded-2xl bg-slate-800/80 border border-emerald-500/20 shadow-[0_0_15px_rgba(0,245,160,0.15)] animate-float-slow">
+                    <span className="text-5xl">
                       {selectedFood.category.includes('Chocolate')
                         ? '🍫'
                         : selectedFood.category.includes('Noodles')
@@ -394,13 +633,13 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
                         : '📦'}
                     </span>
                   </div>
-                  <p className="text-xs text-white/80 font-medium mt-2">
+                  <p className="text-xs text-slate-300 font-tech font-bold mt-3">
                     {selectedFood.calories} kcal · {selectedFood.sugar}g sugar
                   </p>
                 </div>
 
-                {/* Packaging Barcode Mock */}
-                <div className="bg-white/10 rounded-lg p-2 flex items-center justify-between">
+                {/* Barcode Mock */}
+                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between">
                   <div className="flex items-center space-x-0.5">
                     <div className="w-1 h-5 bg-white"></div>
                     <div className="w-0.5 h-5 bg-white"></div>
@@ -409,7 +648,7 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
                     <div className="w-2 h-5 bg-white"></div>
                     <div className="w-1 h-5 bg-white"></div>
                   </div>
-                  <span className="text-[10px] font-mono text-white/80">
+                  <span className="text-[10px] font-tech text-emerald-400">
                     {selectedFood.barcode || '8901058850048'}
                   </span>
                 </div>
@@ -417,66 +656,57 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
             </div>
           )}
 
-          {/* AR Viewfinder 4 Corner Brackets (Green) - Matching uploaded sketch */}
-          <div className="absolute inset-4 sm:inset-6 pointer-events-none z-20">
-            {/* Top Left */}
-            <div className="absolute top-0 left-0 w-10 sm:w-16 h-10 sm:h-16 border-t-4 border-l-4 border-emerald-500 rounded-tl-2xl"></div>
-            {/* Top Right */}
-            <div className="absolute top-0 right-0 w-10 sm:w-16 h-10 sm:h-16 border-t-4 border-r-4 border-emerald-500 rounded-tr-2xl"></div>
-            {/* Bottom Left */}
-            <div className="absolute bottom-0 left-0 w-10 sm:w-16 h-10 sm:h-16 border-b-4 border-l-4 border-emerald-500 rounded-bl-2xl"></div>
-            {/* Bottom Right */}
-            <div className="absolute bottom-0 right-0 w-10 sm:w-16 h-10 sm:h-16 border-b-4 border-r-4 border-emerald-500 rounded-br-2xl"></div>
-
-            {/* Central Target Reticle */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 border border-emerald-500/40 rounded-full flex items-center justify-center">
-              <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
-            </div>
+          {/* Central Target Reticle */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 border border-emerald-500/30 rounded-2xl flex items-center justify-center pointer-events-none z-20">
+            <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
+            <div className="w-1.5 h-1.5 bg-emerald-300 rounded-full" />
+            <div className="absolute -top-2 w-3 h-0.5 bg-emerald-400" />
+            <div className="absolute -bottom-2 w-3 h-0.5 bg-emerald-400" />
+            <div className="absolute -left-2 w-0.5 h-3 bg-emerald-400" />
+            <div className="absolute -right-2 w-0.5 h-3 bg-emerald-400" />
           </div>
 
           {/* Laser Scanning Animation Line */}
           {(isScanning || aiAnalyzing) && (
-            <div className="absolute left-4 right-4 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_15px_#10b981] animate-scan-line pointer-events-none z-30">
-              <div className="absolute right-2 -top-5 text-[10px] font-mono text-emerald-300 bg-slate-900/90 px-2 py-0.5 rounded border border-emerald-500/40">
-                {aiAnalyzing ? 'AI MULTIMODAL OCR...' : 'EXTRACTING NUTRIENTS...'}
+            <div className="absolute left-2 right-2 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_20px_#00F5A0] animate-scan-line pointer-events-none z-30">
+              <div className="absolute right-4 -top-6 text-[10px] font-tech text-emerald-300 bg-slate-950/90 px-2 py-0.5 rounded border border-emerald-500/40">
+                {aiAnalyzing ? (isUsingOcr ? 'READING LABEL WITH OCR...' : 'ANALYZING MULTIMODAL VISION...') : 'EXTRACTING NUTRIENT PROFILE...'}
               </div>
             </div>
           )}
 
           {/* Floating AR Holographic Insight Overlays */}
           {showAROverlay && !isScanning && (
-            <div className="absolute inset-0 pointer-events-auto p-4 z-20 flex flex-col justify-between">
+            <div className="absolute inset-0 pointer-events-auto p-4 sm:p-5 z-20 flex flex-col justify-between">
               {/* Top AR Status Bar */}
               <div className="flex items-center justify-between">
-                {/* Traffic Light Signal (GOOD / OK / BAD) */}
                 <div
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full font-black text-xs tracking-wider shadow-lg border backdrop-blur-md animate-float-slow ${getSignalBadgeColor(
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-tech font-bold text-xs tracking-wider shadow-lg border backdrop-blur-md animate-float-slow ${getSignalBadgeColor(
                     selectedFood.consumptionSignal
                   )}`}
                 >
                   <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
-                  CONTINUOUS USE: {selectedFood.consumptionSignal}
+                  SIGNAL: {selectedFood.consumptionSignal}
                 </div>
 
-                {/* Health Score Pill */}
-                <div className="bg-slate-900/80 backdrop-blur-md border border-white/20 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-lg">
+                <div className="bg-slate-950/80 backdrop-blur-md border border-emerald-500/30 text-white px-3 py-1 rounded-full text-xs font-tech font-bold flex items-center gap-1.5 shadow-lg">
                   <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-400" />
                   <span>Score: {selectedFood.healthScore}/100</span>
                 </div>
               </div>
 
-              {/* Middle Dynamic AR Tags */}
+              {/* Dynamic AR Tags */}
               <div className="relative w-full h-full my-auto pointer-events-none">
                 {selectedFood.arFloatingTags?.map((tag, idx) => (
                   <div
                     key={idx}
                     style={{ left: `${tag.x}%`, top: `${tag.y}%` }}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg text-[11px] font-bold shadow-xl backdrop-blur-md pointer-events-auto cursor-default animate-float-slow transition-all border ${
+                    className={`absolute -translate-x-1/2 -translate-y-1/2 px-3 py-1 rounded-xl text-[11px] font-tech font-bold shadow-xl backdrop-blur-md pointer-events-auto cursor-default animate-float-slow transition-all border ${
                       tag.type === 'kid-alert'
-                        ? 'bg-rose-950/90 text-rose-200 border-rose-500/80 shadow-rose-900/50'
+                        ? 'bg-rose-950/90 text-rose-200 border-rose-500/80 shadow-[0_0_15px_rgba(255,77,109,0.3)]'
                         : tag.type === 'warning'
-                        ? 'bg-amber-950/90 text-amber-200 border-amber-500/80 shadow-amber-900/50'
-                        : 'bg-emerald-950/90 text-emerald-200 border-emerald-500/80 shadow-emerald-900/50'
+                        ? 'bg-amber-950/90 text-amber-200 border-amber-500/80 shadow-[0_0_15px_rgba(251,191,36,0.3)]'
+                        : 'bg-emerald-950/90 text-emerald-200 border-emerald-500/80 shadow-[0_0_15px_rgba(0,245,160,0.3)]'
                     }`}
                   >
                     {tag.label}
@@ -486,11 +716,10 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
 
               {/* Bottom AR Action Bar */}
               <div className="flex items-end justify-between gap-2">
-                {/* Kid Hazard Banner if dangerous */}
                 {!selectedFood.kidSuitability.isRecommendedForKids && (
                   <button
                     onClick={() => onOpenKidVisualizer(selectedFood)}
-                    className="flex items-center gap-2 bg-rose-600/90 hover:bg-rose-600 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-lg backdrop-blur-md border border-rose-400 transition-all group"
+                    className="flex items-center gap-2 bg-rose-600/90 hover:bg-rose-600 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-lg backdrop-blur-md border border-rose-400 transition-all cursor-pointer group"
                   >
                     <ShieldAlert className="w-4 h-4 animate-bounce" />
                     <span>⚠️ Kid Warning: {selectedFood.kidSuitability.sugarSpoonsCount} Spoons Sugar!</span>
@@ -500,7 +729,7 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
 
                 <button
                   onClick={() => setShowAROverlay(!showAROverlay)}
-                  className="ml-auto bg-slate-900/80 hover:bg-slate-800 text-white/80 p-2 rounded-xl text-xs backdrop-blur-md border border-white/20 transition-all"
+                  className="ml-auto bg-slate-900/80 hover:bg-slate-800 text-slate-300 p-2 rounded-xl text-xs backdrop-blur-md border border-slate-700 transition-all cursor-pointer"
                   title="Toggle AR Overlays"
                 >
                   <Sliders className="w-4 h-4" />
@@ -512,65 +741,61 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
 
         {/* Real-time Nutritional Breakdown & Action Panel */}
         <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+          <FuturisticCard variant="emerald" className="p-5 space-y-4">
             {/* Header info */}
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+                <span className="text-[10px] font-tech font-bold text-emerald-400 uppercase tracking-widest">
                   {selectedFood.brand} · {selectedFood.category}
                 </span>
-                <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mt-0.5">
+                <h3 className="text-xl font-black text-white font-display mt-0.5">
                   {selectedFood.name}
                 </h3>
               </div>
-              <div className="text-right">
-                <span
-                  className={`inline-block px-2.5 py-1 rounded-lg text-xs font-black shadow-sm ${getNutriGradeColor(
-                    selectedFood.nutriGrade
-                  )}`}
-                >
-                  Nutri-Grade {selectedFood.nutriGrade}
-                </span>
-              </div>
+              <span
+                className={`inline-block px-2.5 py-1 rounded-lg text-xs font-black shadow-md ${getNutriGradeColor(
+                  selectedFood.nutriGrade
+                )}`}
+              >
+                Nutri-Grade {selectedFood.nutriGrade}
+              </span>
             </div>
 
             {/* Quick Macro Pills */}
             <div className="grid grid-cols-4 gap-2 text-center">
-              <div className="bg-slate-50 dark:bg-slate-800/80 p-2 rounded-xl border border-slate-100 dark:border-slate-700/60">
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Calories</span>
-                <span className="text-sm font-extrabold text-slate-900 dark:text-white">
+              <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-400 font-tech block uppercase">Calories</span>
+                <span className="text-sm font-black text-white font-display">
                   {selectedFood.calories}
                 </span>
-                <span className="text-[10px] text-slate-400">kcal</span>
+                <span className="text-[9px] text-slate-400 font-tech block">kcal</span>
               </div>
-              <div className="bg-slate-50 dark:bg-slate-800/80 p-2 rounded-xl border border-slate-100 dark:border-slate-700/60">
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Sugar</span>
+              <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-400 font-tech block uppercase">Sugar</span>
                 <span
-                  className={`text-sm font-extrabold ${
-                    selectedFood.sugar > 20
-                      ? 'text-rose-600 dark:text-rose-400'
-                      : 'text-slate-900 dark:text-white'
+                  className={`text-sm font-black font-display ${
+                    selectedFood.sugar > 20 ? 'text-rose-400' : 'text-white'
                   }`}
                 >
                   {selectedFood.sugar}g
                 </span>
-                <span className="text-[10px] text-slate-400">
-                  (~{(selectedFood.sugar / 4).toFixed(1)} spoons)
+                <span className="text-[9px] text-slate-400 font-tech block">
+                  ~{(selectedFood.sugar / 4).toFixed(1)} spoons
                 </span>
               </div>
-              <div className="bg-slate-50 dark:bg-slate-800/80 p-2 rounded-xl border border-slate-100 dark:border-slate-700/60">
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Fats</span>
-                <span className="text-sm font-extrabold text-slate-900 dark:text-white">
+              <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-400 font-tech block uppercase">Fats</span>
+                <span className="text-sm font-black text-white font-display">
                   {selectedFood.totalFats}g
                 </span>
-                <span className="text-[10px] text-slate-400">total</span>
+                <span className="text-[9px] text-slate-400 font-tech block">total</span>
               </div>
-              <div className="bg-slate-50 dark:bg-slate-800/80 p-2 rounded-xl border border-slate-100 dark:border-slate-700/60">
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Protein</span>
-                <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">
+              <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-400 font-tech block uppercase">Protein</span>
+                <span className="text-sm font-black text-emerald-400 font-display">
                   {selectedFood.protein}g
                 </span>
-                <span className="text-[10px] text-slate-400">builder</span>
+                <span className="text-[9px] text-slate-400 font-tech block">builder</span>
               </div>
             </div>
 
@@ -578,45 +803,45 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
             <div
               className={`p-3.5 rounded-2xl border text-xs leading-relaxed ${
                 selectedFood.consumptionSignal === 'GOOD'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                  ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
                   : selectedFood.consumptionSignal === 'OK'
-                  ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
-                  : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200'
+                  ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                  : 'bg-rose-950/40 border-rose-500/40 text-rose-200'
               }`}
             >
-              <div className="flex items-center gap-2 font-bold mb-1">
+              <div className="flex items-center gap-2 font-bold mb-1 font-tech">
                 {selectedFood.consumptionSignal === 'GOOD' ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                 ) : (
-                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                 )}
                 <span>
-                  Continuous Intake Signal:{' '}
+                  CONTINUOUS SIGNAL:{' '}
                   <strong className="underline uppercase tracking-wide">
                     {selectedFood.consumptionSignal}
                   </strong>
                 </span>
               </div>
-              <p>
+              <p className="text-[11px] leading-relaxed">
                 <strong>Recommended:</strong> {selectedFood.recommendedAmount} during{' '}
                 {selectedFood.recommendedTime} ({selectedFood.frequency}).
               </p>
-              <p className="mt-1">
+              <p className="mt-1 text-[11px] text-slate-300">
                 <strong>Excess Warning:</strong> {selectedFood.excessIntakeEffects}.
               </p>
             </div>
 
             {/* Kid Specific Health Hazard Callout */}
-            <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700/60">
+            <div className="bg-slate-900/80 p-3.5 rounded-2xl border border-slate-800">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold font-fun text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <span className="text-xs font-bold font-fun text-slate-200 flex items-center gap-1.5">
                   🧒 Kid & Minor Suitability
                 </span>
                 <span
-                  className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                  className={`text-[9px] font-tech font-bold uppercase px-2 py-0.5 rounded-full ${
                     selectedFood.kidSuitability.isRecommendedForKids
-                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                      : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
                   }`}
                 >
                   {selectedFood.kidSuitability.isRecommendedForKids
@@ -624,13 +849,13 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
                     : 'Not Recommended'}
                 </span>
               </div>
-              <p className="text-xs text-slate-600 dark:text-slate-300">
+              <p className="text-xs text-slate-400">
                 {selectedFood.kidSuitability.kidWarningText}
               </p>
 
               <button
                 onClick={() => onOpenKidVisualizer(selectedFood)}
-                className="mt-2.5 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-fun font-bold text-xs shadow-sm transition-all"
+                className="mt-3 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-300 font-fun font-bold text-xs transition-all cursor-pointer"
               >
                 <span>Explore Kids Negative Health Effect Visualizer</span>
                 <ChevronRight className="w-4 h-4" />
@@ -641,38 +866,36 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
             {selectedFood.healthierAlternatives.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                  <span className="text-xs font-tech font-bold text-slate-300 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
                     Recommended Healthier Alternatives
                   </span>
-                  <span className="text-[10px] text-emerald-600 font-semibold">
-                    Smart Swaps
-                  </span>
+                  <span className="text-[10px] font-tech text-emerald-400">Smart Swaps</span>
                 </div>
 
                 {selectedFood.healthierAlternatives.slice(0, 2).map((alt, i) => (
                   <div
                     key={i}
-                    className="p-3 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-xl border border-emerald-200/80 dark:border-emerald-800/50 flex items-center justify-between"
+                    className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex items-center justify-between"
                   >
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-xs text-slate-900 dark:text-white">
+                        <span className="font-bold text-xs text-white">
                           {alt.name}
                         </span>
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-200 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
+                        <span className="text-[9px] font-tech px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                           {alt.badge}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                      <p className="text-[11px] text-slate-400 mt-0.5">
                         {alt.benefitHighlight}
                       </p>
                     </div>
                     <div className="text-right shrink-0 ml-2">
-                      <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400 block">
+                      <span className="text-xs font-tech font-bold text-emerald-400 block">
                         {alt.calories} kcal
                       </span>
-                      <span className="text-[10px] text-slate-500">{alt.sugar}g sugar</span>
+                      <span className="text-[10px] font-tech text-slate-400">{alt.sugar}g sugar</span>
                     </div>
                   </div>
                 ))}
@@ -680,30 +903,33 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
             )}
 
             {/* View Full Deep Nutritional Report Button */}
-            <button
+            <GlowButton
+              size="md"
+              variant="primary"
               onClick={() => onSelectFood(selectedFood)}
-              className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
+              className="w-full"
+              icon={<ArrowRight className="w-4 h-4" />}
+              iconPosition="right"
             >
-              <span>Inspect Full Ingredient & Scientific Report</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
+              Inspect Full Ingredient & Scientific Report
+            </GlowButton>
+          </FuturisticCard>
         </div>
       </div>
 
       {/* Preset Test Packs Scroller */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm">
-        <div className="flex items-center justify-between mb-3">
+      <FuturisticCard variant="neutral" className="p-5">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold font-display text-white flex items-center gap-2">
               <span>Instant Sample Packs to Test</span>
-              <span className="text-[11px] font-normal text-slate-500">
+              <span className="text-[11px] font-tech font-normal text-slate-400">
                 (Tap to simulate instant scan)
               </span>
             </h3>
           </div>
-          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-            {OFFICIAL_HACKATHON_DATASET.length} Loaded Samples
+          <span className="text-xs font-tech font-bold text-emerald-400">
+            {OFFICIAL_HACKATHON_DATASET.length} LAB SAMPLES
           </span>
         </div>
 
@@ -714,54 +940,53 @@ export const ARFoodScanner: React.FC<ARFoodScannerProps> = ({
               <button
                 key={item.id}
                 onClick={() => handleSelectPreset(item)}
-                className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between group ${
+                className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between group cursor-pointer ${
                   isSelected
-                    ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/40 shadow-sm ring-2 ring-emerald-500/20'
-                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850 hover:border-slate-300 dark:hover:border-slate-700'
+                    ? 'border-emerald-400 bg-emerald-500/10 shadow-[0_0_15px_rgba(0,245,160,0.2)]'
+                    : 'border-slate-800 bg-slate-900/60 hover:border-slate-700 hover:bg-slate-800/60'
                 }`}
               >
-                {/* Top badges */}
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-mono text-slate-400 font-bold">
+                  <span className="text-[10px] font-tech text-slate-400 font-bold">
                     {item.id}
                   </span>
                   <span
                     className={`w-2 h-2 rounded-full ${
                       item.consumptionSignal === 'GOOD'
-                        ? 'bg-emerald-500'
+                        ? 'bg-emerald-400 shadow-[0_0_6px_#00F5A0]'
                         : item.consumptionSignal === 'OK'
-                        ? 'bg-amber-500'
-                        : 'bg-rose-500'
+                        ? 'bg-amber-400 shadow-[0_0_6px_#FBBF24]'
+                        : 'bg-rose-400 shadow-[0_0_6px_#FF4D6D]'
                     }`}
                   />
                 </div>
 
                 <div>
-                  <h4 className="font-extrabold text-xs text-slate-900 dark:text-white group-hover:text-emerald-600 transition-colors line-clamp-1">
+                  <h4 className="font-bold text-xs text-white group-hover:text-emerald-400 transition-colors line-clamp-1 font-display">
                     {item.name}
                   </h4>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  <p className="text-[10px] text-slate-400 font-tech">
                     {item.brand}
                   </p>
                 </div>
 
-                <div className="mt-3 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-[10px]">
-                  <span className="font-bold text-slate-700 dark:text-slate-300">
+                <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-tech">
+                  <span className="font-bold text-slate-300">
                     {item.calories} kcal
                   </span>
                   <span
                     className={`font-black ${
-                      item.sugar > 20 ? 'text-rose-500 font-extrabold' : 'text-slate-500'
+                      item.sugar > 20 ? 'text-rose-400' : 'text-slate-400'
                     }`}
                   >
-                    {item.sugar}g sugar
+                    {item.sugar}g
                   </span>
                 </div>
               </button>
             );
           })}
         </div>
-      </div>
+      </FuturisticCard>
     </div>
   );
 };

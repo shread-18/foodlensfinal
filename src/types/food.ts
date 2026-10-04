@@ -36,14 +36,6 @@ export interface ARFloatingTag {
   y: number; // percentage (0-100)
 }
 
-export interface IngredientSafetyInfo {
-  name: string;
-  category: string;
-  purpose: string;
-  safety: 'safe' | 'moderate' | 'risky';
-  description: string;
-}
-
 export interface FoodItem {
   id: string;
   name: string;
@@ -51,21 +43,11 @@ export interface FoodItem {
   category: string;
   barcode?: string;
   calories: number;
-  carbohydrates?: number;
-  nutritionBasis?: string;
-  servingSize?: string;
-  analysisMode?: 'AI' | 'Dataset' | 'Demo';
-  unavailableNutrition?: Array<'calories' | 'protein' | 'carbohydrates' | 'sugar' | 'totalFats' | 'saturatedFat' | 'fiber' | 'sodium'>;
   sugar: number; // grams
   totalFats: number; // grams
-  additives?: string[];
-  preservatives?: string[];
   saturatedFat?: number; // grams
   protein: number; // grams
   sodium?: number; // mg
-  fiber?: number; // grams
-  vitamins?: string[]; // e.g. ["Vitamin A (15%)", "Calcium (25%)", "Iron (10%)"]
-  ingredientsList?: string[];
   allergens: string[];
   recommendedAmount: string;
   recommendedTime: string;
@@ -80,6 +62,7 @@ export interface FoodItem {
   arFloatingTags: ARFloatingTag[];
   caffeineMg?: number;
   sampleImage?: string;
+  image?: string;
 }
 
 export interface ScanHistoryItem {
@@ -88,37 +71,6 @@ export interface ScanHistoryItem {
   food: FoodItem;
   userInputServingGrams?: number;
   servingsCount: number;
-  thumbnailUrl?: string;
-}
-
-export interface MealLogItem {
-  id: string;
-  name: string;
-  brand?: string;
-  calories: number;
-  sugar: number;
-  protein: number;
-  fats?: number;
-  mealType: 'Breakfast' | 'Lunch' | 'Dinner' | 'Snacks';
-  loggedAt: string;
-  isHealthy: boolean;
-}
-
-export interface DailyGoals {
-  calories: number;
-  maxSugar: number;
-  waterMl: number;
-  protein: number;
-  caffeineMax: number;
-}
-
-export interface BugBattleStats {
-  level: number;
-  xp: number;
-  score: number;
-  bugsDefeated: number;
-  streakDays: number;
-  badges: string[];
 }
 
 export interface DailySummary {
@@ -133,7 +85,6 @@ export interface DailySummary {
   goodCount: number;
   okCount: number;
   badCount: number;
-  mealLogs?: MealLogItem[];
 }
 
 export interface ParentalSettings {

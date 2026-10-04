@@ -26,20 +26,6 @@ export function sendLocalNotification(title: string, body: string, icon = '/food
   }
 }
 
-// Mobile vibration haptics helper
-export function triggerHaptic(type: 'light' | 'medium' | 'success' | 'warning' = 'light') {
-  if (typeof window !== 'undefined' && 'vibrate' in navigator) {
-    try {
-      if (type === 'light') navigator.vibrate(10);
-      else if (type === 'medium') navigator.vibrate(25);
-      else if (type === 'success') navigator.vibrate([15, 40, 20]);
-      else if (type === 'warning') navigator.vibrate([35, 60, 35]);
-    } catch {
-      // Haptics skipped if not supported
-    }
-  }
-}
-
 // Gentle audio cues using Web Audio API synthesis
 class SoundEffects {
   private ctx: AudioContext | null = null;
@@ -52,7 +38,7 @@ class SoundEffects {
       }
     }
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume().catch(() => {});
+      this.ctx.resume();
     }
     return this.ctx;
   }
